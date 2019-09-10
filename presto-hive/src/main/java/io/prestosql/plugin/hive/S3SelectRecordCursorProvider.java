@@ -22,6 +22,7 @@ import io.prestosql.spi.predicate.TupleDomain;
 import io.prestosql.spi.type.TypeManager;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.Path;
+import org.apache.hadoop.hive.ql.io.parquet.serde.ParquetHiveSerDe;
 import org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe;
 import org.joda.time.DateTimeZone;
 
@@ -41,6 +42,7 @@ public class S3SelectRecordCursorProvider
         implements HiveRecordCursorProvider
 {
     private static final Set<String> CSV_SERDES = ImmutableSet.of(LazySimpleSerDe.class.getName());
+    private static final Set<String> PARQUET_SERDES = ImmutableSet.of(ParquetHiveSerDe.class.getName());
     private final HdfsEnvironment hdfsEnvironment;
     private final HiveConfig hiveConfig;
     private final PrestoS3ClientFactory s3ClientFactory;
@@ -84,6 +86,13 @@ public class S3SelectRecordCursorProvider
 
         String serdeName = getDeserializerClassName(schema);
         if (CSV_SERDES.contains(serdeName)) {
+            IonSqlQueryBuilder queryBuilder = new IonSqlQueryBuilder(typeManager);
+            String ionSqlQuery = queryBuilder.buildSql(columns, effectivePredicate);
+            S3SelectLineRecordReader recordReader = new S3SelectCsvRecordReader(configuration, hiveConfig, path, start, length, schema, ionSqlQuery, s3ClientFactory);
+            return Optional.of(new S3SelectRecordCursor<>(configuration, path, recordReader, length, schema, columns, hiveStorageTimeZone, typeManager));
+        }
+
+        if (PARQUET_SERDES.contains(serdeName)) {
             IonSqlQueryBuilder queryBuilder = new IonSqlQueryBuilder(typeManager);
             String ionSqlQuery = queryBuilder.buildSql(columns, effectivePredicate);
             S3SelectLineRecordReader recordReader = new S3SelectCsvRecordReader(configuration, hiveConfig, path, start, length, schema, ionSqlQuery, s3ClientFactory);
